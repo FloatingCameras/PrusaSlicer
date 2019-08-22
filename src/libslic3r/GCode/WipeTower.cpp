@@ -537,6 +537,11 @@ void WipeTower::set_extruder(size_t idx, const PrintConfig& config)
         m_filpar[idx].cooling_moves           = config.filament_cooling_moves.get_at(idx);
         m_filpar[idx].cooling_initial_speed   = config.filament_cooling_initial_speed.get_at(idx);
         m_filpar[idx].cooling_final_speed     = config.filament_cooling_final_speed.get_at(idx);
+
+		m_filpar[idx].filament_dribbling      = config.filament_dribbling.get_at(idx);
+		m_filpar[idx].dribbling_meltingzone   = config.dribbling_meltingzone.get_at(idx);
+		m_filpar[idx].dribbling_moves         = config.dribbling_moves.get_at(idx);
+
     }
 
     m_filpar[idx].filament_area = float((M_PI/4.f) * pow(config.filament_diameter.get_at(idx), 2)); // all extruders are assumed to have the same filament diameter at this point
@@ -1075,20 +1080,20 @@ void WipeTower::toolchange_Unload(
 	writer.append("; ----\n");
 
 	// this is to align ramming and future wiping extrusions, so the future y-steps can be uniform from the start:
-    // the perimeter_width will later be subtracted, it is there to not load while moving over just extruded material
-	writer.travel(end_of_ramming.x(), end_of_ramming.y() + (y_step/m_extra_spacing-m_perimeter_width) / 2.f + m_perimeter_width, 2400.f);
-  
-  writer.append("; END Ramming GCODE\n");
-  
-  if (new_temperature != 0 && (new_temperature > m_old_temperature || m_is_first_layer)) { 	// Set the extruder temperature if it is higher, but don't wait.
-	  // If the required temperature is less than or the same as last time, don't emit the M104 again (if user adjusted the value, it would be reset)
-	  // However, always change temperatures on the first layer (this is to avoid issues with priming lines turned off).
-	  writer.set_extruder_temp(new_temperature, false);
-	  m_old_temperature = new_temperature;
-  }
+	// the perimeter_width will later be subtracted, it is there to not load while moving over just extruded material
+	writer.travel(end_of_ramming.x(), end_of_ramming.y() + (y_step / m_extra_spacing - m_perimeter_width) / 2.f + m_perimeter_width, 2400.f);
+
+	writer.append("; END Ramming GCODE\n");
 
 	writer.resume_preview()
-		  .flush_planner_queue();
+		.flush_planner_queue();
+
+	if (new_temperature != 0 && (new_temperature > m_old_temperature || m_is_first_layer)) { 	// Set the extruder temperature if it is higher, but don't wait.
+		// If the required temperature is less than or the same as last time, don't emit the M104 again (if user adjusted the value, it would be reset)
+		// However, always change temperatures on the first layer (this is to avoid issues with priming lines turned off).
+		writer.set_extruder_temp(new_temperature, false);
+		m_old_temperature = new_temperature;
+	}
 }
 
 // Change the tool, set a speed override for soluble and flex materials.
