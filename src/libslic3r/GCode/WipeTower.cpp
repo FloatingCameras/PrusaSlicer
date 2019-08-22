@@ -1041,14 +1041,8 @@ void WipeTower::toolchange_Unload(
 			writer.append("; END Dribbling GCODE\n");
 		}
 	}
-    if (new_temperature != 0 && (new_temperature != m_old_temperature || m_is_first_layer) ) { 	// Set the extruder temperature, but don't wait.
-        // If the required temperature is the same as last time, don't emit the M104 again (if user adjusted the value, it would be reset)
-        // However, always change temperatures on the first layer (this is to avoid issues with priming lines turned off).
-		writer.set_extruder_temp(new_temperature, false);
-        m_old_temperature = new_temperature;
-    }
 
-    // Cooling:
+	// Cooling:
     const int& number_of_moves = m_filpar[m_current_tool].cooling_moves;
     if (number_of_moves > 0) {
         const float& initial_speed = m_filpar[m_current_tool].cooling_initial_speed;
@@ -1085,7 +1079,14 @@ void WipeTower::toolchange_Unload(
 	writer.travel(end_of_ramming.x(), end_of_ramming.y() + (y_step/m_extra_spacing-m_perimeter_width) / 2.f + m_perimeter_width, 2400.f);
   
   writer.append("; END Ramming GCODE\n");
-	
+  
+  if (new_temperature != 0 && (new_temperature > m_old_temperature || m_is_first_layer)) { 	// Set the extruder temperature if it is higher, but don't wait.
+	  // If the required temperature is less than or the same as last time, don't emit the M104 again (if user adjusted the value, it would be reset)
+	  // However, always change temperatures on the first layer (this is to avoid issues with priming lines turned off).
+	  writer.set_extruder_temp(new_temperature, false);
+	  m_old_temperature = new_temperature;
+  }
+
 	writer.resume_preview()
 		  .flush_planner_queue();
 }
