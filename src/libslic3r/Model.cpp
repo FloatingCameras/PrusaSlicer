@@ -84,7 +84,7 @@ void Model::update_links_bottom_up_recursive()
 	}
 }
 
-Model Model::read_from_file(const std::string &input_file, DynamicPrintConfig *config, bool add_default_instances)
+Model Model::read_from_file(const std::string& input_file, DynamicPrintConfig* config, bool add_default_instances, bool check_version)
 {
     Model model;
 
@@ -98,9 +98,9 @@ Model Model::read_from_file(const std::string &input_file, DynamicPrintConfig *c
     else if (boost::algorithm::iends_with(input_file, ".obj"))
         result = load_obj(input_file.c_str(), &model);
     else if (boost::algorithm::iends_with(input_file, ".amf") || boost::algorithm::iends_with(input_file, ".amf.xml"))
-        result = load_amf(input_file.c_str(), config, &model);
+        result = load_amf(input_file.c_str(), config, &model, check_version);
     else if (boost::algorithm::iends_with(input_file, ".3mf"))
-        result = load_3mf(input_file.c_str(), config, &model);
+        result = load_3mf(input_file.c_str(), config, &model, false);
     else if (boost::algorithm::iends_with(input_file, ".prusa"))
         result = load_prus(input_file.c_str(), &model);
     else
@@ -121,15 +121,15 @@ Model Model::read_from_file(const std::string &input_file, DynamicPrintConfig *c
     return model;
 }
 
-Model Model::read_from_archive(const std::string &input_file, DynamicPrintConfig *config, bool add_default_instances)
+Model Model::read_from_archive(const std::string& input_file, DynamicPrintConfig* config, bool add_default_instances, bool check_version)
 {
     Model model;
 
     bool result = false;
     if (boost::algorithm::iends_with(input_file, ".3mf"))
-        result = load_3mf(input_file.c_str(), config, &model);
+        result = load_3mf(input_file.c_str(), config, &model, check_version);
     else if (boost::algorithm::iends_with(input_file, ".zip.amf"))
-        result = load_amf(input_file.c_str(), config, &model);
+        result = load_amf(input_file.c_str(), config, &model, check_version);
     else
         throw std::runtime_error("Unknown file format. Input file must have .3mf or .zip.amf extension.");
 
@@ -528,8 +528,9 @@ void Model::convert_multipart_object(unsigned int max_extruders)
                 	copy_volume(object->add_volume(*v))->set_transformation(i->get_transformation() * trafo_volume);                    
             }
         }
-    // If there are more than one object, create a single instance
+
     object->add_instance();
+    object->instances[0]->set_offset(object->raw_mesh_bounding_box().center());
 
     this->clear_objects();
     this->objects.push_back(object);

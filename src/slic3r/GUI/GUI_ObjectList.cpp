@@ -17,6 +17,10 @@
 #include <boost/algorithm/string.hpp>
 #include "slic3r/Utils/FixModelByWin10.hpp"
 
+#ifdef __WXMSW__
+#include "wx/uiaction.h"
+#endif /* __WXMSW__ */
+
 namespace Slic3r
 {
 namespace GUI
@@ -119,6 +123,10 @@ ObjectList::ObjectList(wxWindow* parent) :
          * instead of real last clicked item.
          * So, let check last selected item in such strange way
          */
+#ifdef __WXMSW__
+		// Workaround for entering the column editing mode on Windows. Simulate keyboard enter when another column of the active line is selected.
+		int new_selected_column = -1;
+#endif __WXMSW__
         if (wxGetKeyState(WXK_SHIFT))
         {
             wxDataViewItemArray sels;
@@ -128,8 +136,25 @@ ObjectList::ObjectList(wxWindow* parent) :
             else
                 m_last_selected_item = event.GetItem();
         }
-        else
-            m_last_selected_item = event.GetItem();
+        else {
+  	      	wxDataViewItem    new_selected_item  = event.GetItem();
+#ifdef __WXMSW__
+			// Workaround for entering the column editing mode on Windows. Simulate keyboard enter when another column of the active line is selected.
+		    wxDataViewItem    item;
+		    wxDataViewColumn *col;
+		    this->HitTest(get_mouse_position_in_control(), item, col);
+		    new_selected_column = (col == nullptr) ? -1 : (int)col->GetModelColumn();
+	        if (new_selected_item == m_last_selected_item && m_last_selected_column != -1 && m_last_selected_column != new_selected_column) {
+	        	// Mouse clicked on another column of the active row. Simulate keyboard enter to enter the editing mode of the current column.
+	        	wxUIActionSimulator sim;
+				sim.Char(WXK_RETURN);
+	        }
+#endif __WXMSW__
+	        m_last_selected_item = new_selected_item;
+        }
+#ifdef __WXMSW__
+        m_last_selected_column = new_selected_column;
+#endif __WXMSW__
 
         selection_changed();
 #ifndef __WXMSW__
@@ -184,7 +209,10 @@ ObjectList::ObjectList(wxWindow* parent) :
     Bind(wxEVT_DATAVIEW_ITEM_DROP_POSSIBLE, &ObjectList::OnDropPossible,    this);
     Bind(wxEVT_DATAVIEW_ITEM_DROP,          &ObjectList::OnDrop,            this);
 
-    Bind(wxEVT_DATAVIEW_ITEM_EDITING_DONE,  &ObjectList::OnEditingDone,     this);
+#ifdef __WXMSW__
+    Bind(wxEVT_DATAVIEW_ITEM_EDITING_STARTED, &ObjectList::OnEditingStarted,  this);
+#endif /* __WXMSW__ */
+    Bind(wxEVT_DATAVIEW_ITEM_EDITING_DONE,    &ObjectList::OnEditingDone,     this);
 
     Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, &ObjectList::ItemValueChanged,  this);
 
@@ -1944,12 +1972,14 @@ void ObjectList::split()
     DynamicPrintConfig&	config = printer_config();
 	const ConfigOption *nozzle_dmtrs_opt = config.option("nozzle_diameter", false);
 	const auto nozzle_dmrs_cnt = (nozzle_dmtrs_opt == nullptr) ? size_t(1) : dynamic_cast<const ConfigOptionFloats*>(nozzle_dmtrs_opt)->values.size();
-    if (volume->split(nozzle_dmrs_cnt) == 1) {
+    if (!volume->is_splittable()) {
         wxMessageBox(_(L("The selected object couldn't be split because it contains only one part.")));
         return;
     }
 
     take_snapshot(_(L("Split to Parts")));
+
+    volume->split(nozzle_dmrs_cnt);
 
     wxBusyCursor wait;
 
@@ -2465,35 +2495,47 @@ void ObjectList::remove()
     if (GetSelectedItemsCount() == 0)
         return;
 
-    wxDataViewItemArray sels;
-    GetSelections(sels);
-
-    wxDataViewItem  parent = wxDataViewItem(0);
-
-    Plater::TakeSnapshot snapshot(wxGetApp().plater(), _(L("Delete Selected")));
-
-    for (auto& item : sels)
+    auto delete_item = [this](wxDataViewItem item)
     {
-        if (m_objects_model->InvalidItem(item)) // item can be deleted for this moment (like last 2 Instances or Volumes)
-            continue;
-        if (m_objects_model->GetParent(item) == wxDataViewItem(0))
+        wxDataViewItem parent = m_objects_model->GetParent(item);
+        if (m_objects_model->GetItemType(item) & itObject)
             delete_from_model_and_list(itObject, m_objects_model->GetIdByItem(item), -1);
         else {
             if (m_objects_model->GetItemType(item) & itLayer) {
-                parent = m_objects_model->GetParent(item);
                 wxDataViewItemArray children;
                 if (m_objects_model->GetChildren(parent, children) == 1)
                     parent = m_objects_model->GetTopParent(item);
             }
-            else if (sels.size() == 1)
-                select_item(m_objects_model->GetParent(item));
             
             del_subobject_item(item);
         }
+
+        return parent;
+    };
+
+    wxDataViewItemArray sels;
+    GetSelections(sels);
+
+    wxDataViewItem parent = wxDataViewItem(0);
+
+    if (sels.Count() == 1)
+        parent = delete_item(GetSelection());
+    else
+    {
+        Plater::TakeSnapshot snapshot = Plater::TakeSnapshot(wxGetApp().plater(), _(L("Delete Selected")));
+
+        for (auto& item : sels)
+        {
+            if (m_objects_model->InvalidItem(item)) // item can be deleted for this moment (like last 2 Instances or Volumes)
+                continue;
+            parent = delete_item(item);
+        }
     }
 
-    if (parent)
+    if (parent && !m_objects_model->InvalidItem(parent)) {
         select_item(parent);
+        update_selections_on_canvas();
+    }
 }
 
 void ObjectList::del_layer_range(const t_layer_height_range& range)
@@ -2750,8 +2792,12 @@ void ObjectList::update_selections()
             }
             else if (m_selection_mode & smLayerRoot)
                 sels.Add(m_objects_model->GetLayerRootItem(obj_item));
-            else if (m_selection_mode & smLayer)
-                sels.Add(m_objects_model->GetItemByLayerId(obj_idx, m_selected_layers_range_idx));
+            else if (m_selection_mode & smLayer) {
+                if (m_selected_layers_range_idx >= 0)
+                    sels.Add(m_objects_model->GetItemByLayerId(obj_idx, m_selected_layers_range_idx));
+                else
+                    sels.Add(obj_item);
+            }
         }
         else {
         for (const auto& object : objects_content) {
@@ -3541,6 +3587,15 @@ void ObjectList::ItemValueChanged(wxDataViewEvent &event)
         update_extruder_in_config(event.GetItem());
 }
 
+#ifdef __WXMSW__
+// Workaround for entering the column editing mode on Windows. Simulate keyboard enter when another column of the active line is selected.
+// Here the last active column is forgotten, so when leaving the editing mode, the next mouse click will not enter the editing mode of the newly selected column.
+void ObjectList::OnEditingStarted(wxDataViewEvent &event)
+{
+	m_last_selected_column = -1;
+}
+#endif __WXMSW__
+
 void ObjectList::OnEditingDone(wxDataViewEvent &event)
 {
     if (event.GetColumn() != colName)
@@ -3553,6 +3608,12 @@ void ObjectList::OnEditingDone(wxDataViewEvent &event)
 			show_error(this, _(L("The supplied name is not valid;")) + "\n" +
 				             _(L("the following characters are not allowed:")) + " <>:/\\|?*\"");
 		});
+
+#ifdef __WXMSW__
+	// Workaround for entering the column editing mode on Windows. Simulate keyboard enter when another column of the active line is selected.
+	// Here the last active column is forgotten, so when leaving the editing mode, the next mouse click will not enter the editing mode of the newly selected column.
+	m_last_selected_column = -1;
+#endif __WXMSW__
 }
 
 void ObjectList::show_multi_selection_menu()

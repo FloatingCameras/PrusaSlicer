@@ -439,7 +439,7 @@ public:
 
     bool                empty() const { return this->indexed_vertex_array.empty(); }
 
-    void                set_range(coordf_t low, coordf_t high);
+    void                set_range(double low, double high);
 
     void                render() const;
     void                render(int color_id, int detection_id, int worldmatrix_id) const;
@@ -522,6 +522,9 @@ public:
     int load_wipe_tower_preview(
         int obj_idx, float pos_x, float pos_y, float width, float depth, float height, float rotation_angle, bool size_unknown, float brim_width, bool opengl_initialized);
 
+    GLVolume* new_toolpath_volume(const float *rgba, size_t reserve_vbo_floats = 0);
+    GLVolume* new_nontoolpath_volume(const float *rgba, size_t reserve_vbo_floats = 0);
+
     // Render the volumes by OpenGL.
     void render(ERenderType type, bool disable_cullface, const Transform3d& view_matrix, std::function<bool(const GLVolume&)> filter_func = std::function<bool(const GLVolume&)>()) const;
 
@@ -563,6 +566,10 @@ public:
     size_t 				total_memory_used() const { return this->cpu_memory_used() + this->gpu_memory_used(); }
     // Return CPU, GPU and total memory log line.
     std::string         log_memory_info() const;
+
+    bool                has_toolpaths_to_export() const;
+    // Export the geometry of the GLVolumes toolpaths of this collection into the file with the given path, in obj format 
+    void                export_toolpaths_to_obj(const char* filename) const;
 
 private:
     GLVolumeCollection(const GLVolumeCollection &other);
@@ -643,6 +650,7 @@ public:
     static void remove_all_canvases();
 
     static bool init(wxGLCanvas* canvas);
+    static void destroy();
 
     static GUI::GLCanvas3D* get_canvas(wxGLCanvas* canvas);
 

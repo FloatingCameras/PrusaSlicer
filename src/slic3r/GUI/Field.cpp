@@ -637,6 +637,10 @@ void SpinCtrl::BUILD() {
 
 void SpinCtrl::propagate_value()
 {
+    if (suppress_propagation)
+        return;
+
+    suppress_propagation = true;
     if (tmp_value == UNDEF_VALUE) {
         on_kill_focus();
 	} else {
@@ -650,6 +654,7 @@ void SpinCtrl::propagate_value()
 #endif
         on_change_field();
     }
+    suppress_propagation = false;
 }
 
 void SpinCtrl::msw_rescale()
@@ -1056,6 +1061,7 @@ void ColourPicker::set_undef_value(wxColourPickerCtrl* field)
     wxButton* btn = dynamic_cast<wxButton*>(field->GetPickerCtrl());
     wxBitmap bmp = btn->GetBitmap();
     wxMemoryDC dc(bmp);
+    if (!dc.IsOk()) return;
     dc.SetTextForeground(*wxWHITE);
     dc.SetFont(wxGetApp().normal_font());
 
