@@ -290,8 +290,6 @@ void Selection::add_volume(unsigned int object_idx, unsigned int volume_idx, int
         (as_single_selection && matches(volume_idxs)))
         return;
 
-    wxGetApp().plater()->take_snapshot(_(L("Selection-Add Volume")));
-
     // resets the current list if needed
     if (as_single_selection)
         clear();
@@ -308,8 +306,6 @@ void Selection::remove_volume(unsigned int object_idx, unsigned int volume_idx)
 {
     if (!m_valid)
         return;
-
-    wxGetApp().plater()->take_snapshot(_(L("Selection-Remove Volume")));
 
     for (unsigned int i = 0; i < (unsigned int)m_volumes->size(); ++i)
     {
@@ -331,8 +327,6 @@ void Selection::add_volumes(EMode mode, const std::vector<unsigned int>& volume_
         (as_single_selection && matches(volume_idxs)))
         return;
 
-    wxGetApp().plater()->take_snapshot(_(L("Selection-Add Volumes")));
-
     // resets the current list if needed
     if (as_single_selection)
         clear();
@@ -352,8 +346,6 @@ void Selection::remove_volumes(EMode mode, const std::vector<unsigned int>& volu
 {
     if (!m_valid)
         return;
-
-    wxGetApp().plater()->take_snapshot(_(L("Selection-Remove Volumes")));
 
     m_mode = mode;
     for (unsigned int i : volume_idxs)
@@ -954,12 +946,12 @@ void Selection::scale_to_fit_print_volume(const DynamicPrintConfig& config)
                 // apply scale
                 start_dragging();
                 scale(s * Vec3d::Ones(), type);
-                wxGetApp().plater()->canvas3D()->do_scale(L("")); // avoid storing another snapshot
+                wxGetApp().plater()->canvas3D()->do_scale(""); // avoid storing another snapshot
 
                 // center selection on print bed
                 start_dragging();
                 translate(print_volume.center() - get_bounding_box().center());
-                wxGetApp().plater()->canvas3D()->do_move(L("")); // avoid storing another snapshot
+                wxGetApp().plater()->canvas3D()->do_move(""); // avoid storing another snapshot
 
                 wxGetApp().obj_manipul()->set_dirty();
             }
@@ -1491,6 +1483,7 @@ void Selection::toggle_instance_printable_state()
             }
 
             wxGetApp().obj_list()->update_printable_state(obj_idx, instance_idx);
+            wxGetApp().plater()->update();
         }
     }
 }

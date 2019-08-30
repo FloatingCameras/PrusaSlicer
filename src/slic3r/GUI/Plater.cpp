@@ -563,9 +563,9 @@ FreqChangedParams::FreqChangedParams(wxWindow* parent) :
             new_conf.set_key_value("pad_enable", new ConfigOptionBool(pad_enable));
 
             if (selection == _("Below object"))
-                new_conf.set_key_value("pad_zero_elevation", new ConfigOptionBool(false));
+                new_conf.set_key_value("pad_around_object", new ConfigOptionBool(false));
             else if (selection == _("Around object"))
-                new_conf.set_key_value("pad_zero_elevation", new ConfigOptionBool(true));
+                new_conf.set_key_value("pad_around_object", new ConfigOptionBool(true));
         }
         else
         {
@@ -1183,7 +1183,7 @@ void Sidebar::show_sliced_info_sizer(const bool show)
                     info_text += wxString::Format("\n%s", ps.estimated_normal_print_time);
                     for (int i = (int)ps.estimated_normal_color_print_times.size() - 1; i >= 0; --i)
                     {
-                        new_label += wxString::Format("\n      - %s%d", _(L("Color ")), i + 1);
+                        new_label += wxString::Format("\n      - %s%d", _(L("Color")) + " ", i + 1);
                         info_text += wxString::Format("\n%s", ps.estimated_normal_color_print_times[i]);
                     }
                 }
@@ -1192,7 +1192,7 @@ void Sidebar::show_sliced_info_sizer(const bool show)
                     info_text += wxString::Format("\n%s", ps.estimated_silent_print_time);
                     for (int i = (int)ps.estimated_silent_color_print_times.size() - 1; i >= 0; --i)
                     {
-                        new_label += wxString::Format("\n      - %s%d", _(L("Color ")), i + 1);
+                        new_label += wxString::Format("\n      - %s%d", _(L("Color")) + " ", i + 1);
                         info_text += wxString::Format("\n%s", ps.estimated_silent_color_print_times[i]);
                     }
                 }
@@ -2240,7 +2240,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                                 if (object->volumes.size() > 1)
                                 {
                                     Slic3r::GUI::show_info(nullptr,
-                                        _(L("You can't to load SLA project if there is at least one multi-part object on the bed")) + "\n\n" +
+                                        _(L("You can't load SLA project if there is at least one multi-part object on the bed")) + "\n\n" +
                                         _(L("Please check your object list before preset changing.")),
                                         _(L("Attention!")));
                                     return obj_idxs;
@@ -3179,7 +3179,12 @@ void Plater::priv::set_current_panel(wxPanel* panel)
     }
     else if (current_panel == preview)
     {
-        this->q->reslice();
+        // see: Plater::priv::object_list_changed()
+        // FIXME: it may be better to have a single function making this check and let it be called wherever needed
+        bool export_in_progress = this->background_process.is_export_scheduled();
+        bool model_fits = view3D->check_volumes_outside_state() != ModelInstance::PVS_Partly_Outside;
+        if (!model.objects.empty() && !export_in_progress && model_fits)
+            this->q->reslice();
         // keeps current gcode preview, if any
         preview->reload_print(true);
         preview->set_canvas_as_dirty();
@@ -3387,7 +3392,7 @@ void Plater::priv::on_right_click(Vec2dEvent& evt)
          */
         const MenuIdentifier id = printer_technology == ptSLA ? miObjectSLA : miObjectFFF;
         if (wxGetApp().get_mode() == comSimple) {
-            if (menu->FindItem(_(L("Increase copies"))) != wxNOT_FOUND)
+            if (menu->FindItem(_(L("Add instance"))) != wxNOT_FOUND)
             {
                 /* Detach an items from the menu, but don't delete them
                  * so that they can be added back later
@@ -3399,7 +3404,7 @@ void Plater::priv::on_right_click(Vec2dEvent& evt)
             }
         }
         else {
-            if (menu->FindItem(_(L("Increase copies"))) == wxNOT_FOUND)
+            if (menu->FindItem(_(L("Add instance"))) == wxNOT_FOUND)
             {
                 // Prepend items to the menu, if those aren't not there
                 menu->Prepend(items_set_number_of_copies[id]);
@@ -3513,11 +3518,11 @@ bool Plater::priv::init_common_menu(wxMenu* menu, const bool is_part/* = false*/
         sidebar->obj_list()->append_menu_item_export_stl(menu);
     }
     else {
-        wxMenuItem* item_increase = append_menu_item(menu, wxID_ANY, _(L("Increase copies")) + "\t+", _(L("Place one more copy of the selected object")),
+        wxMenuItem* item_increase = append_menu_item(menu, wxID_ANY, _(L("Add instance")) + "\t+", _(L("Add one more instance of the selected object")),
             [this](wxCommandEvent&) { q->increase_instances();      }, "add_copies",        nullptr, [this]() { return can_increase_instances(); }, q);
-        wxMenuItem* item_decrease = append_menu_item(menu, wxID_ANY, _(L("Decrease copies")) + "\t-", _(L("Remove one copy of the selected object")),
+        wxMenuItem* item_decrease = append_menu_item(menu, wxID_ANY, _(L("Remove instance")) + "\t-", _(L("Remove one instance of the selected object")),
             [this](wxCommandEvent&) { q->decrease_instances();      }, "remove_copies",     nullptr, [this]() { return can_decrease_instances(); }, q);
-        wxMenuItem* item_set_number_of_copies = append_menu_item(menu, wxID_ANY, _(L("Set number of copies")) + dots, _(L("Change the number of copies of the selected object")),
+        wxMenuItem* item_set_number_of_copies = append_menu_item(menu, wxID_ANY, _(L("Set number of instances")) + dots, _(L("Change the number of instances of the selected object")),
             [this](wxCommandEvent&) { q->set_number_of_copies();    }, "number_of_copies",  nullptr, [this]() { return can_increase_instances(); }, q);
 
 
@@ -3946,6 +3951,9 @@ void Plater::priv::undo_redo_to(std::vector<UndoRedo::Snapshot>::const_iterator 
             AppConfig *app_config = wxGetApp().app_config;
             app_config->set("presets", "printer", (new_printer_technology == ptFFF) ? m_last_fff_printer_profile_name : m_last_sla_printer_profile_name);
             wxGetApp().preset_bundle->load_presets(*app_config);
+			// load_current_presets() calls Tab::load_current_preset() -> TabPrint::update() -> Object_list::update_and_show_object_settings_item(),
+			// but the Object list still keeps pointer to the old Model. Avoid a crash by removing selection first.
+			this->sidebar->obj_list()->unselect_objects();
             // Load the currently selected preset into the GUI, update the preset selection box.
             // This also switches the printer technology based on the printer technology of the active printer profile.
             wxGetApp().load_current_presets();

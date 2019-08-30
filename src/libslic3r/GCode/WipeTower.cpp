@@ -1111,6 +1111,10 @@ void WipeTower::toolchange_Change(
     writer.append("[end_filament_gcode]\n");
     writer.append("[toolchange_gcode]\n");
 
+    // Travel to where we assume we are. Custom toolchange or some special T code handling (parking extruder etc)
+    // gcode could have left the extruder somewhere, we cannot just start extruding.
+    writer.append(std::string("G1 X") + std::to_string(writer.x()) +  " Y" + std::to_string(writer.y()) +  "\n");
+
     // The toolchange Tn command will be inserted later, only in case that the user does
     // not provide a custom toolchange gcode.
 	writer.set_tool(new_tool); // This outputs nothing, the writer just needs to know the tool has changed.

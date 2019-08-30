@@ -840,7 +840,7 @@ static wxString support_combo_value_for_config(const DynamicPrintConfig &config,
 
 static wxString pad_combo_value_for_config(const DynamicPrintConfig &config)
 {
-    return config.opt_bool("pad_enable") ? (config.opt_bool("pad_zero_elevation") ? _("Around object") : _("Below object")) : _("None");
+    return config.opt_bool("pad_enable") ? (config.opt_bool("pad_around_object") ? _("Around object") : _("Below object")) : _("None");
 }
 
 void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
@@ -856,13 +856,20 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
         boost::any val = og_freq_chng_params->get_config_value(*m_config, opt_key);
         og_freq_chng_params->set_value(opt_key, val);
     }
+    
+    if (opt_key == "pad_around_object") {
+        for (PageShp &pg : m_pages) {
+            Field * fld = pg->get_field(opt_key);
+            if (fld) fld->set_value(value, false);
+        }
+    }
 
     if (is_fff ?
             (opt_key == "support_material" || opt_key == "support_material_auto" || opt_key == "support_material_buildplate_only") :
             (opt_key == "supports_enable"  || opt_key == "support_buildplate_only"))
         og_freq_chng_params->set_value("support", support_combo_value_for_config(*m_config, is_fff));
 
-    if (! is_fff && (opt_key == "pad_enable" || opt_key == "pad_zero_elevation"))
+    if (! is_fff && (opt_key == "pad_enable" || opt_key == "pad_around_object"))
         og_freq_chng_params->set_value("pad", pad_combo_value_for_config(*m_config));
 
     if (opt_key == "brim_width")
@@ -1793,7 +1800,7 @@ void TabFilament::update_volumetric_flow_preset_hints()
     try {
         text = from_u8(PresetHints::maximum_volumetric_flow_description(*m_preset_bundle));
     } catch (std::exception &ex) {
-        text = _(L("Volumetric flow hints not available\n\n")) + from_u8(ex.what());
+        text = _(L("Volumetric flow hints not available")) + "\n\n" + from_u8(ex.what());
     }
     m_volumetric_speed_description_line->SetText(text);
 }
@@ -3745,6 +3752,9 @@ void TabSLAPrint::build()
     optgroup->append_single_option_line("support_base_diameter");
     optgroup->append_single_option_line("support_base_height");
     optgroup->append_single_option_line("support_base_safety_distance");
+    
+    // Mirrored parameter from Pad page for toggling elevation on the same page
+    optgroup->append_single_option_line("pad_around_object");
     optgroup->append_single_option_line("support_object_elevation");
 
     optgroup = page->new_optgroup(_(L("Connection of the support sticks and junctions")));
@@ -3766,7 +3776,7 @@ void TabSLAPrint::build()
 //    optgroup->append_single_option_line("pad_edge_radius");
     optgroup->append_single_option_line("pad_wall_slope");
 
-    optgroup->append_single_option_line("pad_zero_elevation");
+    optgroup->append_single_option_line("pad_around_object");
     optgroup->append_single_option_line("pad_object_gap");
     optgroup->append_single_option_line("pad_object_connector_stride");
     optgroup->append_single_option_line("pad_object_connector_width");
@@ -3842,7 +3852,7 @@ void TabSLAPrint::update()
     get_field("pad_max_merge_distance")->toggle(pad_en);
     // get_field("pad_edge_radius")->toggle(supports_en);
     get_field("pad_wall_slope")->toggle(pad_en);
-    get_field("pad_zero_elevation")->toggle(pad_en);
+    get_field("pad_around_object")->toggle(pad_en);
 
     double head_penetration = m_config->opt_float("support_head_penetration");
     double head_width       = m_config->opt_float("support_head_width");
@@ -3885,7 +3895,7 @@ void TabSLAPrint::update()
     }
 
     bool   has_suppad = pad_en && supports_en;
-    bool zero_elev    = m_config->opt_bool("pad_zero_elevation") && has_suppad;
+    bool zero_elev    = m_config->opt_bool("pad_around_object") && has_suppad;
 
     get_field("support_object_elevation")->toggle(supports_en && !zero_elev);
     get_field("pad_object_gap")->toggle(zero_elev);
