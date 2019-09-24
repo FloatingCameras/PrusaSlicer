@@ -135,7 +135,7 @@ wxSizer* ObjectLayers::create_layer(const t_layer_height_range& range)
     auto temp = new wxStaticText(m_parent, wxID_ANY, _(L("mm")));
     temp->SetBackgroundStyle(wxBG_STYLE_PAINT);
     temp->SetFont(wxGetApp().normal_font());
-    sizer->Add(temp, 0, wxLEFT|wxRIGHT, wxGetApp().em_unit());
+    sizer->Add(temp, 0, wxLEFT, wxGetApp().em_unit());
 
     m_grid_sizer->Add(sizer);
 
@@ -154,16 +154,16 @@ void ObjectLayers::create_layers_list()
 
         sizer->Add(del_btn, 0, wxRIGHT | wxLEFT, em_unit(m_parent));
 
-        del_btn->Bind(wxEVT_BUTTON, [this, range](wxEvent &event) {
+        del_btn->Bind(wxEVT_BUTTON, [range](wxEvent &) {
             wxGetApp().obj_list()->del_layer_range(range);
         });
 
         auto add_btn = new ScalableButton(m_parent, wxID_ANY, m_bmp_add);
         add_btn->SetToolTip(_(L("Add layer range")));
 
-        sizer->Add(add_btn, 0, wxRIGHT, em_unit(m_parent));
+        sizer->Add(add_btn);
 
-        add_btn->Bind(wxEVT_BUTTON, [this, range](wxEvent &event) {
+        add_btn->Bind(wxEVT_BUTTON, [range](wxEvent &) {
             wxGetApp().obj_list()->add_layer_range_after_current(range);
         });
     }
@@ -227,6 +227,42 @@ void ObjectLayers::msw_rescale()
 {
     m_bmp_delete.msw_rescale();
     m_bmp_add.msw_rescale();
+
+    m_grid_sizer->SetHGap(wxGetApp().em_unit());
+
+    // rescale edit-boxes
+    const int cells_cnt = m_grid_sizer->GetCols() * m_grid_sizer->GetEffectiveRowsCount();
+    for (int i = 0; i < cells_cnt; i++)
+    {
+        const wxSizerItem* item = m_grid_sizer->GetItem(i);
+        if (item->IsWindow())
+        {
+            LayerRangeEditor* editor = dynamic_cast<LayerRangeEditor*>(item->GetWindow());
+            if (editor != nullptr)
+                editor->msw_rescale();
+        }
+        else if (item->IsSizer()) // case when we have editor with buttons
+        {
+            wxSizerItem* e_item = item->GetSizer()->GetItem(size_t(0)); // editor
+            if (e_item->IsWindow()) {
+                LayerRangeEditor* editor = dynamic_cast<LayerRangeEditor*>(e_item->GetWindow());
+                if (editor != nullptr)
+                    editor->msw_rescale();
+            }
+
+            const std::vector<size_t> btns = {2, 3};  // del_btn, add_btn
+            for (auto btn : btns)
+            {
+                wxSizerItem* b_item = item->GetSizer()->GetItem(btn);
+                if (b_item->IsWindow()) {
+                    ScalableButton* button = dynamic_cast<ScalableButton*>(b_item->GetWindow());
+                    if (button != nullptr)
+                        button->msw_rescale();
+                }                
+            }
+        }
+    }
+    m_grid_sizer->Layout();
 }
 
 void ObjectLayers::reset_selection()
@@ -248,6 +284,9 @@ LayerRangeEditor::LayerRangeEditor( ObjectLayers* parent,
                wxSize(8 * em_unit(parent->m_parent), wxDefaultCoord), wxTE_PROCESS_ENTER)
 {
     this->SetFont(wxGetApp().normal_font());
+
+    // Reset m_enter_pressed flag to _false_, when value is editing
+    this->Bind(wxEVT_TEXT, [this](wxEvent&) { m_enter_pressed = false; }, this->GetId());
     
     this->Bind(wxEVT_TEXT_ENTER, [this, edit_fn](wxEvent&)
     {
@@ -271,7 +310,7 @@ LayerRangeEditor::LayerRangeEditor( ObjectLayers* parent,
         if (!m_enter_pressed) {
 #ifndef __WXGTK__
             /* Update data for next editor selection.
-             * But under GTK it lucks like there is no information about selected control at e.GetWindow(),
+             * But under GTK it looks like there is no information about selected control at e.GetWindow(),
              * so we'll take it from wxEVT_LEFT_DOWN event
              * */
             LayerRangeEditor* new_editor = dynamic_cast<LayerRangeEditor*>(e.GetWindow());
@@ -340,6 +379,11 @@ coordf_t LayerRangeEditor::get_value()
     }
 
     return layer_height;
+}
+
+void LayerRangeEditor::msw_rescale()
+{
+    SetMinSize(wxSize(8 * wxGetApp().em_unit(), wxDefaultCoord));
 }
 
 } //namespace GUI
